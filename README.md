@@ -41,3 +41,8 @@ python3 _httpserver_test.py
 - ~~前端html来自 [autopcr_web](https://github.com/cca2878/autopcr_web)~~
 - ~~前端html来自 [AutoPCR_Archived](https://github.com/watermellye/AutoPCR_Archived)~~
 - ~~模型生成来自 [PcrotoGen](https://github.com/cc004/PcrotoGen)~~
+
+## Action（仅适用于HTTP 服务器模式）
+添加环境变量IMAGE_NAME定义镜像名称,例如autopcr/autopcr<br>
+添加机密DOCKERHUB_USERNAME和DOCKERHUB_TOKEN用于推送到dockerhub
+手动点击或者push操作触发action
