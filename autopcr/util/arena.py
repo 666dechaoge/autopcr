@@ -1,10 +1,11 @@
 from typing import List, Set, Tuple
-import json, asyncio, time
+import json, asyncio, time, os
 from os.path import join, exists
-from random import choice, sample, choices
+from random import random, choice, sample
+from math import log
 
 from ..model.custom import PLACEHOLDER, ArenaQueryType, ArenaQueryUnit, ArenaRegion, ArenaQueryResult, ArenaQueryResponse
-from . import aiorequests, pcrdapi
+from . import aiorequests 
 
 try:
     from hoshino.modules.priconne.arena.arena import curpath as CACHE_DIR
@@ -31,40 +32,40 @@ class ArenaQuery:
         with open(self.timepath, 'r', encoding="utf-8") as fp:
             self.buffer = json.load(fp)
 
-    _endpoint = 'https://api.pcrdfans.com/x/v1/search'
-    _headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
-        "Referer": "https://pcrdfans.com/",
-        "Origin": "https://pcrdfans.com",
-        "Accept": "*/*",
-        "Content-Type": "application/json; charset=utf-8",
-        "Authorization": "",
-        "Host": "api.pcrdfans.com",
-    }
-    
-    @staticmethod
-    def _getNonce():
-        return ''.join(choices("0123456789abcdefghijklmnopqrstuvwxyz", k=16))
+    def __get_query_ip(self):
+        return "https://api.pcrdfans.com/x/v1/search"
 
-    @staticmethod
-    def _getTs():
-        return int(time.time())
-
-    @staticmethod
-    def _get_query_payload(units, region):
+    def __get_query_header(self):
         return {
-            "def": units,
-            "language": 0,
-            "nonce": ArenaQuery._getNonce(),
-            "page": 1,
-            "region": region,
-            "sort": 1,
-            "ts": ArenaQuery._getTs()
-        }
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.87 Safari/537.36",
+        "authorization": self.__get_auth_key(),
+    }
 
-    @staticmethod
-    def _dumps(x):
-        return json.dumps(x, ensure_ascii=False).replace(' ', '')
+    def __get_auth_key(self):
+        key = ""
+        try: 
+            from hoshino.config.priconne import arena
+            key = arena.AUTH_KEY
+        except:
+            from ..constants import AUTH_KEY
+            key = AUTH_KEY
+        if not key:
+            key = os.getenv('AUTH_KEY', None)     
+        if not key:
+            raise ValueError("请配置key")
+        return key
+
+    def __get_query_payload(self, units, region):
+        timestamp = int(time.time())
+        return {
+            "_sign": "a",
+            "def": units,
+            "nonce": "a",
+            "page": 1,
+            "sort": 1,
+            "ts": timestamp,
+            "region": region,
+        }
 
     def save_buffer(self):
         with open(self.timepath, 'w', encoding="utf-8") as fp:
@@ -119,12 +120,10 @@ class ArenaQuery:
         async with self.querylock:
             await asyncio.sleep(1)
             try:
-                data = ArenaQuery._get_query_payload(units, region)
-                data['_sign'] = pcrdapi.sign(ArenaQuery._dumps(data), data['nonce'])
                 resp = await aiorequests.post(
-                    ArenaQuery._endpoint,
-                    headers=ArenaQuery._headers,
-                    data=ArenaQuery._dumps(data).encode('utf8'),
+                    self.__get_query_ip(),
+                    headers=self.__get_query_header(),
+                    json=self.__get_query_payload(units, region),
                     timeout=5,
                 )
                 res = await resp.json()
@@ -154,6 +153,7 @@ class ArenaQuery:
         return result
 
     def attack_score(self, record: ArenaQueryResult) -> float: # the bigger, the better
+        confidence_level = 0.95
         up_vote = record.up
         down_vote = record.down
 
@@ -164,9 +164,9 @@ class ArenaQuery:
         def mean(x) -> float:
             return (x[0] + x[1]) / 2
 
-        from .statistics import wilson_score_interval as proportion_confint
-        positive_rate_ci = proportion_confint(up_vote, total_vote)
-        negative_rate_ci = proportion_confint(down_vote, total_vote)
+        from statsmodels.stats.proportion import proportion_confint
+        positive_rate_ci = proportion_confint(up_vote, total_vote, alpha=1-confidence_level, method='wilson')
+        negative_rate_ci = proportion_confint(down_vote, total_vote, alpha=1-confidence_level, method='wilson')
         composite_score = mean(positive_rate_ci) - mean(negative_rate_ci)
         return composite_score 
 
@@ -261,17 +261,13 @@ class ArenaQuery:
     def str_result(self, result: List[ArenaQueryResult]):
         msg = ""
         from ..db.database import db
-        for id, ret in enumerate(result):
-            head = f"{id + 1}. {db.format_date(db.parse_time(ret.updated)) if ret.updated else ''}:"
+        for ret in result:
             tail = f"{ret.up}/{ret.down}"
             if ret.query_type == ArenaQueryType.APPROXIMATION:
                 tail += f"(近似解)"
             elif ret.query_type == ArenaQueryType.PLACEHOLDER:
                 tail = f"凑解"
-            comment = '\n'.join([f"  | {db.format_date(db.parse_time(c.date)) if c.date else ''}: {c.msg.strip()}" for c in ret.comment[:3] if c.msg.strip()]) if ret.comment else "  | 无评论"
-            msg += f'''{head}【{" ".join([db.get_unit_name(unit.id) for unit in ret.atk])}】 {tail}
-{comment}
-'''
+            msg += f'''【{" ".join([db.get_unit_name(unit.id) for unit in ret.atk])}】 {tail}\n'''
 
         return msg
 
