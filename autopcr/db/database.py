@@ -25,6 +25,18 @@ class database():
         
         with dbmgr.session() as db:
 
+            self.dear_story_data: Dict[int, DearStoryDatum] = (
+                DearStoryDatum.query(db)
+                .to_dict(lambda x: x.value, lambda x: x)
+            )
+
+            self.dear_story_detail: Dict[int, Dict[int, DearStoryDetail]] = (
+                DearStoryDetail.query(db)
+                .group_by(lambda x: x.story_group_id)
+                .to_dict(lambda x: x.key, lambda x: x.to_dict(
+                            lambda x: x.story_id, lambda x: x))
+            )
+
             self.seasonpass_level_reward: Dict[int, SeasonpassLevelReward] = (
                 SeasonpassLevelReward.query(db)
                 .to_dict(lambda x: x.level_id, lambda x: x)
@@ -946,5 +958,14 @@ class database():
 
     def unit_level_candidate(self):
         return list(range(1, self.team_max_level + 1 + 10))
+
+    def last_normal_quest_candidate(self):
+        last_start_time = flow(self.normal_quest_data.values()) \
+                .where(lambda x: db.parse_time(x.start_time) <= datetime.datetime.now()) \
+                .max(lambda x: x.start_time).start_time
+        return flow(self.normal_quest_data.values()) \
+                .where(lambda x: x.start_time == last_start_time) \
+                .select(lambda x: f"{x.quest_id}: {x.quest_name.split(' ')[1]}") \
+                .to_list()
 
 db = database()

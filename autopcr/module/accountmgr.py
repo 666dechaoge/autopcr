@@ -198,7 +198,7 @@ class Account(ModuleManager):
         return self._parent._parent.is_clan_battle_forbidden(username)
 
 class AccountManager:
-    pathsyntax = re.compile(r'[^\\\|?*/]{1,32}')
+    pathsyntax = re.compile(r'[^\\\|?*/#]{1,32}')
 
     def __init__(self, parent: 'UserManager', qid: str, readonly: bool = False):
         if not qid in parent.user_lock:
@@ -275,7 +275,8 @@ class AccountManager:
         return self.secret.default_account
 
     def accounts(self) -> Iterator[str]:
-        for fn in os.listdir(self.root):
+        account_files = sorted(os.listdir(self.root))
+        for fn in account_files:
             if fn.endswith('.json'):
                 yield fn[:-5]
 
