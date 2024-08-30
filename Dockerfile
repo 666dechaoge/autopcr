@@ -5,12 +5,16 @@ ENV PYTHONIOENCODING=utf-8
 
 WORKDIR /app
 
-# 安装build依赖，并保持清洁，尽可能小的构建环境
+# 安装build依赖，包括 Rust 和 Cargo，并保持清洁，尽可能小的构建环境
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install build-essential -y \
+    && apt-get install -y build-essential curl libssl-dev pkg-config \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt-get/lists/* && pip install --upgrade pip
+    && rm -rf /var/lib/apt-get/lists/*
+
+# 确保 Cargo 在 PATH 中
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # 复制需求文件，并且安装Python依赖
 COPY ./requirements.txt .
